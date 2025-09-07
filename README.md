@@ -1,0 +1,1 @@
+# rs_comicshrinker_v2
