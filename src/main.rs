@@ -16,6 +16,8 @@ use zip::ZipWriter;
 // todo résolution maximale -> meilleure compression -> proposer cette option
 // todo conserver les métadonnées d'origine ;
 // todo paralléliser la conversion AVIF (rayon) ;
+// todo accepter plus de formats en entrée/sortie
+// todo sortie console en couleurs
 
 #[derive(Parser)]
 struct Cli {
@@ -34,14 +36,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(_) => { println!(); }
         Err(error) => { panic!("{}", error); }
     }
-
+    // todo fusionner ces 2 vérifs d'input
     // File extension acceptable ?
     if !is_file_acceptable(&args.path_to_archive) {
         panic!("File extension is not acceptable.");
     }
 
     // Output acceptable ?
-    is_output_acceptable(&args.path_to_output);
+    if !is_output_acceptable(&args.path_to_output, &args.path_to_archive) {
+        panic!("Selected output is not acceptable.");
+    }
+    println!("Output destination is acceptable : {:?}", &args.path_to_output);
 
     // Temporary folder to work with
     let tmp_dir = TempDir::new()?;
@@ -62,12 +67,66 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 /// todo doc
 /// todo tests
-fn is_output_acceptable(path_to_output: &Path){
-    // todo what to check ?
-
+fn is_output_acceptable(path_to_output: &Path, path_to_input: &Path)-> bool {
     // Checks :
-    // - acceptable extension
-    println!("output : {:?}", path_to_output);
+    // - file already exists
+    // - parent folder does not exist
+    // - not a directory
+    // - acceptable extensions (cbz, zip)
+    // - output is different of input
+
+    // Check : file already exists
+    if path_to_output.exists() {
+        println!("File already exists : {:?}", path_to_output);
+        return false;
+    }
+
+    // Check : output != input
+    let input = match path_to_input.canonicalize() {
+        Ok(p) => p,
+        Err(_) => return false,
+    };
+
+    let output = if path_to_output.is_absolute() {
+        path_to_output.to_path_buf()
+    } else {
+        std::env::current_dir().unwrap().join(path_to_output)
+    };
+
+    if input == output {
+        println!("Input and output must be different.");
+        return false;
+    }
+
+    // Check : parent folder does not exist
+    let parent = path_to_output.parent().unwrap_or(Path::new("."));
+    if !parent.as_os_str().is_empty() && !parent.exists() {
+        println!("Parent folder for output does not exist : {:?}", parent);
+        return false;
+    }
+
+    // Check : not a directory
+    if path_to_output.is_dir(){
+        println!("Output file must not be a repertory : {:?}", path_to_output);
+        return false;
+    }
+
+    // Check : output extension
+    let acceptable_extensions_for_output = ["cbz", "zip"];
+    let output_extension = match path_to_output.extension().and_then(|e| e.to_str())
+    {
+        Some(ext) => ext,
+        None => {
+            println!("Output file must have an extension : {:?}",path_to_output);
+            return false;
+        }
+    };
+    if(!acceptable_extensions_for_output.contains(&output_extension)){
+        println!("Output extension not (yet?) accepted : {:?}", output_extension);
+        println!("Output extensions accepted today : {:?}", acceptable_extensions_for_output);
+        return false;
+    }
+    true
 }
 
 /// todo doc
