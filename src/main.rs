@@ -21,6 +21,7 @@ use zip::ZipWriter;
 struct Cli {
     /// The path to the archive to convert.
     path_to_archive: std::path::PathBuf,
+    path_to_output: std::path::PathBuf,
 }
 
 /// todo doc
@@ -39,6 +40,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         panic!("File extension is not acceptable.");
     }
 
+    // Output acceptable ?
+    is_output_acceptable(&args.path_to_output);
+
     // Temporary folder to work with
     let tmp_dir = TempDir::new()?;
     let path = tmp_dir.keep(); // todo à commenter ? car cela garde le fchier temporaire, l'idéal serait de le supprimer
@@ -49,11 +53,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Image conversion
     convert_directory(&path)?;
 
-    let output = PathBuf::from("result.cbz");
+    let output = PathBuf::from(&args.path_to_output);
 
     create_archive(path.as_path(), &output)?;
 
     Ok(())
+}
+
+/// todo doc
+/// todo tests
+fn is_output_acceptable(path_to_output: &Path){
+    // todo what to check ?
+
+    // Checks :
+    // - acceptable extension
+    println!("output : {:?}", path_to_output);
 }
 
 /// todo doc
