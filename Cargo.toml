@@ -13,4 +13,9 @@ categories = ["multimedia::images"]
 [dependencies]
 archive = "0.3.2"
 clap = { version = "4.6.2", features = ["derive"] }
+image = "0.25"
+ravif = "0.13"
+rgb = "0.8"
 tempfile = "3"
+walkdir = "2"
+zip = "2"
