@@ -31,15 +31,9 @@ struct Cli {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Cli::parse();
 
-    // Path to file exists ?
-    match check_archive_exists(&args.path_to_archive) {
-        Ok(_) => { println!(); }
-        Err(error) => { panic!("{}", error); }
-    }
-    // todo fusionner ces 2 vérifs d'input
-    // File extension acceptable ?
-    if !is_file_acceptable(&args.path_to_archive) {
-        panic!("File extension is not acceptable.");
+    // Input acceptable ?
+    if !is_input_acceptable(&args.path_to_archive) {
+        panic!("Selected output is not acceptable.");
     }
 
     // Output acceptable ?
@@ -63,6 +57,71 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     create_archive(path.as_path(), &output)?;
 
     Ok(())
+}
+
+/// todo doc
+/// todo tests
+fn is_input_acceptable(path_to_input: &Path)-> bool {
+    // Checks
+    // - file exists
+    // - not a repertory
+    // - is a true file
+    // - extension acceptable
+    // - file is readable
+    // - file is not empty
+
+    // Check : file exists
+    if !path_to_input.exists() {
+        println!("File not found : {}", path_to_input.display());
+        return false;
+    }
+
+    // Check : not a repertory
+    if path_to_input.is_dir() {
+        println!("Input must be a file, not a directory.");
+        return false;
+    }
+
+    // Check : is a true file
+    if !path_to_input.is_file() {
+        println!("Input is not a regular file.");
+        return false;
+    }
+
+    // Check : acceptable extension
+    if let Some(ext) = path_to_input.extension().and_then(|e| e.to_str()) {
+        if !ext.eq_ignore_ascii_case("cbz")
+            && !ext.eq_ignore_ascii_case("cbt")
+        {
+            println!("Input extension is not accepted.");
+            return false;
+        }
+    } else {
+        println!("Input file has no extension.");
+        return false;
+    }
+
+    // Check : file is readable
+    if let Err(e) = std::fs::File::open(path_to_input) {
+        println!("Cannot read input file: {}", e);
+        return false;
+    }
+
+    // Check : file is not empty
+    let metadata = match std::fs::metadata(path_to_input) {
+        Ok(metadata) => metadata,
+        Err(error) => {
+            println!("Cannot read metadata: {}", error);
+            return false;
+        }
+    };
+    if metadata.len() == 0 {
+        println!("Input file is empty.");
+        return false;
+    }
+
+    // All cheks are passed
+    true
 }
 
 /// todo doc
@@ -272,31 +331,4 @@ fn extract_to_folder(path: &Path, tmp_dir: &PathBuf) -> Result<(), Box<dyn std::
         }
     }
     Ok(())
-}
-
-/// todo doc
-/// todo test
-fn is_file_acceptable(path: &Path) -> bool {
-    let acceptable_extensions = ["cbz", "cbt"];
-    let extension = path.extension().unwrap().to_os_string().into_string().unwrap();
-
-    if acceptable_extensions.contains(&&*extension) {
-        true
-    } else{
-        false
-    }
-}
-
-
-/// todo doc
-/// todo test
-fn check_archive_exists(path: &Path) -> io::Result<()> {
-    if path.exists() {
-        Ok(())
-    } else {
-        Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            format!("File not found : {}", path.display()),
-        ))
-    }
 }
