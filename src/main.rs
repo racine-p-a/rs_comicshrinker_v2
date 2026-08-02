@@ -5,14 +5,13 @@ use std::path::{Path, PathBuf};
 use archive::{ArchiveExtractor, ArchiveFormat};
 use image::{ImageReader};
 use ravif::{Encoder, Img};
-use rgb::RGBA8;
+use rgb::{RGB8, RGBA8};
 use tempfile::TempDir;
 use walkdir::WalkDir;
 use zip::write::SimpleFileOptions;
 use zip::ZipWriter;
 
 // todo documenter que nasm est nécessaire à la compilation
-// todo meilleure compression si noir et blanc -> proposer cette option
 // todo résolution maximale -> meilleure compression -> proposer cette option
 // todo conserver les métadonnées d'origine ;
 // todo paralléliser la conversion AVIF (rayon) ;
@@ -233,35 +232,51 @@ fn create_archive(source_dir: &Path, output_file: &Path,) -> Result<(), Box<dyn 
 /// todo doc
 /// todo tests
 fn convert_to_avif(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    // todo more explanation
+    const MAX_WIDTH: u32 = 1920;
+    const MAX_HEIGHT: u32 = 1920;
     let img = ImageReader::open(path)?.decode()?;
+    let resized = if img.width() > MAX_WIDTH || img.height() > MAX_HEIGHT {
+        println!("Image too big : {}", path.display());
+        img.thumbnail(MAX_WIDTH, MAX_HEIGHT)
+    } else {
+        img
+    };
+    let rgb = resized.to_rgb8();
+    let is_gray = is_grayscale(&rgb);
+    println!("is_gray = {}", is_gray);
+    if is_gray {
+        println!("{} : grayscale", path.display());
+    } else {
+        println!("{} : color", path.display());
+    }
 
-    let rgba = img.to_rgba8();
-
-
-    let width = rgba.width();
-    let height = rgba.height();
-
-    let pixels: Vec<RGBA8> = rgba
+    let pixels: Vec<RGB8> = rgb
         .pixels()
-        .map(|p| RGBA8::new(p[0], p[1], p[2], p[3]))
+        .map(|p| RGB8::new(p[0], p[1], p[2]))
         .collect();
 
     let img = Img::new(
         pixels.as_slice(),
-        rgba.width() as usize,
-        rgba.height() as usize,
+        rgb.width() as usize,
+        rgb.height() as usize,
     );
 
-    let result = Encoder::new()
-        .with_quality(30.0)
-        .with_speed(4)
-        .encode_rgba(img)?;
+    // The conversion differs only by quality : 20 for gray_scale, 30 for colors
+    let result;
+    if is_gray {
+        result = Encoder::new()
+            .with_quality(20.0)
+            .with_speed(3)
+            .encode_rgb(img)?;
+    } else {
+        result = Encoder::new()
+            .with_quality(30.0)
+            .with_speed(3)
+            .encode_rgb(img)?;
+    }
 
     let output = path.with_extension("avif");
-
     fs::write(&output, result.avif_file)?;
-
     if output.exists() {
         fs::remove_file(path)?;
     }
@@ -271,22 +286,33 @@ fn convert_to_avif(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
 
 /// todo doc
 /// todo tests
-fn convert_directory(
-    directory: &Path,
-) -> Result<(), Box<dyn std::error::Error>> {
+fn is_grayscale(img: &image::RgbImage) -> bool {
+    let total = img.pixels().count();
 
+    let gray = img.pixels().filter(|p| {
+        let r = p[0] as i16;
+        let g = p[1] as i16;
+        let b = p[2] as i16;
+
+        (r - g).abs() <= 10 &&
+            (g - b).abs() <= 10
+    }).count();
+
+    let ratio = gray as f64 / total as f64;
+    ratio > 0.90
+}
+
+/// todo doc
+/// todo tests
+fn convert_directory(directory: &Path) -> Result<(), Box<dyn std::error::Error>> {
     for entry in WalkDir::new(directory) {
         let entry = entry?;
-
         let path = entry.path();
-
         if path.is_file() && is_image(path) {
             println!("Conversion : {}", path.display());
-
             convert_to_avif(path)?;
         }
     }
-
     Ok(())
 }
 
