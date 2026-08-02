@@ -20,9 +20,13 @@ use zip::ZipWriter;
 
 #[derive(Parser)]
 struct Cli {
-    /// The path to the archive to convert.
+    // The path to the archive to convert.
     path_to_archive: std::path::PathBuf,
+    // The path to the new archive.
     path_to_output: std::path::PathBuf,
+    // Maximum width/height of the converted image : --maxsize=1920 or --maxsize 1920
+    #[arg(long, default_value_t = 1920)]
+    max_size: u32,
 }
 
 /// todo doc
@@ -43,13 +47,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Temporary folder to work with
     let tmp_dir = TempDir::new()?;
-    let path = tmp_dir.keep(); // todo à commenter ? car cela garde le fchier temporaire, l'idéal serait de le supprimer
+    let path = tmp_dir.keep(); // todo à commenter ? car cela garde le fichier temporaire, l'idéal serait de le supprimer
 
     // Archive extraction
     extract_to_folder(&args.path_to_archive, &path);
 
     // Image conversion
-    convert_directory(&path)?;
+    println!("All images will be resized to maximum dimensions of : {} pixels (size ratio will be kept). Use the option \"--max-size=1920\" if you want another maximum.", args.max_size);
+    println!("Use the option \"--max-size=1920\" if you want another maximum.");
+    println!("Use the option \"--max-size=0\" if you want deactivate this behavior.");
+    convert_directory(&path, &args.max_size)?;
 
     let output = PathBuf::from(&args.path_to_output);
 
@@ -231,13 +238,11 @@ fn create_archive(source_dir: &Path, output_file: &Path,) -> Result<(), Box<dyn 
 
 /// todo doc
 /// todo tests
-fn convert_to_avif(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    const MAX_WIDTH: u32 = 1920;
-    const MAX_HEIGHT: u32 = 1920;
+fn convert_to_avif(path: &Path, max_size : &u32) -> Result<(), Box<dyn std::error::Error>> {
     let img = ImageReader::open(path)?.decode()?;
-    let resized = if img.width() > MAX_WIDTH || img.height() > MAX_HEIGHT {
+    let resized = if *max_size!=0 && (img.width() > *max_size || img.height() > *max_size) {
         println!("Image too big : {}", path.display());
-        img.thumbnail(MAX_WIDTH, MAX_HEIGHT)
+        img.thumbnail(*max_size, *max_size)
     } else {
         img
     };
@@ -304,13 +309,13 @@ fn is_grayscale(img: &image::RgbImage) -> bool {
 
 /// todo doc
 /// todo tests
-fn convert_directory(directory: &Path) -> Result<(), Box<dyn std::error::Error>> {
+fn convert_directory(directory: &Path, max_size : &u32) -> Result<(), Box<dyn std::error::Error>> {
     for entry in WalkDir::new(directory) {
         let entry = entry?;
         let path = entry.path();
         if path.is_file() && is_image(path) {
             println!("Conversion : {}", path.display());
-            convert_to_avif(path)?;
+            convert_to_avif(path, &max_size)?;
         }
     }
     Ok(())
