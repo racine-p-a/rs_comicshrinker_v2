@@ -1,11 +1,11 @@
 use clap::Parser;
 use std::fs::{self, File};
-use std::io::{self, Write};
+use std::io::{Write};
 use std::path::{Path, PathBuf};
 use archive::{ArchiveExtractor, ArchiveFormat};
 use image::{ImageReader};
 use ravif::{Encoder, Img};
-use rgb::{RGB8, RGBA8};
+use rgb::{RGB8};
 use tempfile::TempDir;
 use walkdir::WalkDir;
 use zip::write::SimpleFileOptions;
