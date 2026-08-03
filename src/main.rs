@@ -67,20 +67,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Temporary folder to work with
     let tmp_dir = TempDir::new()?;
-    let path = tmp_dir.keep(); // todo à commenter ? car cela garde le fichier temporaire, l'idéal serait de le supprimer
 
     // Archive extraction
-    extract_to_folder(&args.path_to_archive, &path)?;
+    extract_to_folder(&args.path_to_archive, &tmp_dir.path().to_path_buf())?;
 
     // Image conversion
     println!("All images will be resized to maximum dimensions of : {} pixels (size ratio will be kept). Use the option \"--max-size=1920\" if you want another maximum.", args.max_size);
     println!("Use the option \"--max-size=1920\" if you want another maximum.");
     println!("Use the option \"--max-size=0\" if you want deactivate this behavior.");
-    convert_directory(&path, &args.max_size)?;
+    convert_directory(&tmp_dir.path(), &args.max_size)?;
 
     let output = PathBuf::from(&args.path_to_output);
 
-    create_archive(path.as_path(), &output, flatten, rename)?;
+    create_archive(tmp_dir.path(), &output, flatten, rename)?;
 
     Ok(())
 }
