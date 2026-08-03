@@ -70,7 +70,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let path = tmp_dir.keep(); // todo à commenter ? car cela garde le fichier temporaire, l'idéal serait de le supprimer
 
     // Archive extraction
-    extract_to_folder(&args.path_to_archive, &path);
+    extract_to_folder(&args.path_to_archive, &path)?;
 
     // Image conversion
     println!("All images will be resized to maximum dimensions of : {} pixels (size ratio will be kept). Use the option \"--max-size=1920\" if you want another maximum.", args.max_size);
@@ -206,7 +206,7 @@ fn is_output_acceptable(path_to_output: &Path, path_to_input: &Path)-> bool {
             return false;
         }
     };
-    if(!acceptable_extensions_for_output.contains(&output_extension)){
+    if !acceptable_extensions_for_output.contains(&output_extension){
         println!("Output extension not (yet?) accepted : {:?}", output_extension);
         println!("Output extensions accepted today : {:?}", acceptable_extensions_for_output);
         return false;
@@ -257,35 +257,6 @@ fn create_archive(source_dir: &Path, output_file: &Path,to_flatten: bool, to_ren
         zip.write_all(&data)?;
     }
 
-
-    /*
-    for entry in WalkDir::new(source_dir) {
-        let entry = entry?;
-        let path = entry.path();
-
-        // On ignore le dossier racine
-        if path == source_dir {
-            continue;
-        }
-
-        let relative_path = path.strip_prefix(source_dir)?;
-
-        if path.is_dir() {
-            zip.add_directory(
-                relative_path.to_string_lossy(),
-                options,
-            )?;
-        } else {
-            zip.start_file(
-                relative_path.to_string_lossy(),
-                options,
-            )?;
-
-            let data = fs::read(path)?;
-            zip.write_all(&data)?;
-        }
-    }
-*/
     zip.finish()?;
 
     Ok(())
