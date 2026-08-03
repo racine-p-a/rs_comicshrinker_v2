@@ -12,27 +12,35 @@ use zip::write::SimpleFileOptions;
 use zip::ZipWriter;
 
 // todo documenter que nasm est nécessaire à la compilation
-// todo résolution maximale -> meilleure compression -> proposer cette option
 // todo conserver les métadonnées d'origine ;
 // todo paralléliser la conversion AVIF (rayon) ;
 // todo accepter plus de formats en entrée/sortie
 // todo sortie console en couleurs
 
+
 #[derive(Parser)]
 struct Cli {
-    // The path to the archive to convert.
+    /// The path to the archive to convert.
     path_to_archive: std::path::PathBuf,
-    // The path to the new archive.
+    /// The path to the new archive.
     path_to_output: std::path::PathBuf,
-    // Maximum width/height of the converted image : --maxsize=1920 or --maxsize 1920
+    /// Maximum width/height of the converted image : --maxsize=1920 or --maxsize 1920
     #[arg(long, default_value_t = 1920)]
     max_size: u32,
+    /// Keep directory structure in the output archive.
+    #[arg(long)]
+    no_flatten: bool,
+    /// Keep original filenames.
+    #[arg(long)]
+    no_rename: bool,
 }
 
 /// todo doc
 /// todo tests
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Cli::parse();
+    let flatten = !args.no_flatten;
+    let rename = !args.no_rename;
 
     // Input acceptable ?
     if !is_input_acceptable(&args.path_to_archive) {
@@ -44,6 +52,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         panic!("Selected output is not acceptable.");
     }
     println!("Output destination is acceptable : {:?}", &args.path_to_output);
+
+    if flatten {
+        println!("File structure will be flattened. If you do not want it, add the option --no-flatten to your command.");
+    } else {
+        println!("File structure will be kept as is.");
+    }
+
+    if rename {
+        println!("The image filenames will be renamed. If you do not want it, add the option --no-rename to your command.");
+    } else {
+        println!("The image filenames will be kept as is.");
+    }
 
     // Temporary folder to work with
     let tmp_dir = TempDir::new()?;
@@ -60,7 +80,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let output = PathBuf::from(&args.path_to_output);
 
-    create_archive(path.as_path(), &output)?;
+    create_archive(path.as_path(), &output, flatten, rename)?;
 
     Ok(())
 }
@@ -196,13 +216,49 @@ fn is_output_acceptable(path_to_output: &Path, path_to_input: &Path)-> bool {
 
 /// todo doc
 /// todo tests
-fn create_archive(source_dir: &Path, output_file: &Path,) -> Result<(), Box<dyn std::error::Error>> {
+fn create_archive(source_dir: &Path, output_file: &Path,to_flatten: bool, to_rename: bool,) -> Result<(), Box<dyn std::error::Error>> {
     let file = File::create(output_file)?;
     let mut zip = ZipWriter::new(file);
 
-    let options = SimpleFileOptions::default()
-        .compression_method(zip::CompressionMethod::Deflated);
+    let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+    let mut files = Vec::new();
+    for entry in WalkDir::new(source_dir) {
+        let entry = entry?;
+        if entry.path().is_file() {
+            files.push(entry.path().to_path_buf());
+        }
+    }
+    files.sort();
 
+    // To get the size of names. 01.avif or 001.avif, etc...
+    let digits = files.len().to_string().len();
+
+    for (index, path) in files.iter().enumerate() {
+        let archive_path = if to_rename {
+            let ext = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("bin");
+            format!("{:0width$}.{}",index + 1,ext,width = digits,)
+        } else if to_flatten {
+            path.file_name()
+                .ok_or("Nom de fichier invalide")?
+                .to_string_lossy()
+                .into_owned()
+        } else {
+            path.strip_prefix(source_dir)?
+                .to_string_lossy()
+                .into_owned()
+        };
+
+        zip.start_file(&archive_path, options)?;
+
+        let data = fs::read(path)?;
+        zip.write_all(&data)?;
+    }
+
+
+    /*
     for entry in WalkDir::new(source_dir) {
         let entry = entry?;
         let path = entry.path();
@@ -229,7 +285,7 @@ fn create_archive(source_dir: &Path, output_file: &Path,) -> Result<(), Box<dyn 
             zip.write_all(&data)?;
         }
     }
-
+*/
     zip.finish()?;
 
     Ok(())
