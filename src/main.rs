@@ -8,6 +8,7 @@ use ravif::{Encoder, Img};
 use rgb::{RGB8};
 use tempfile::TempDir;
 use walkdir::WalkDir;
+use weaver_unrar::{ExtractOptions, RarArchive};
 use zip::write::SimpleFileOptions;
 use zip::ZipWriter;
 
@@ -16,6 +17,7 @@ use zip::ZipWriter;
 // todo paralléliser la conversion AVIF (rayon) ;
 // todo accepter plus de formats en entrée/sortie
 // todo sortie console en couleurs
+// todo utiliser une vraie détection de la compression du fichier https://docs.rs/rars/latest/rars/ -> pub use detect::detect_archive_family;
 
 
 #[derive(Parser)]
@@ -116,7 +118,7 @@ fn is_input_acceptable(path_to_input: &Path)-> bool {
     // Check : acceptable extension
     if let Some(ext) = path_to_input.extension().and_then(|e| e.to_str()) {
         if !ext.eq_ignore_ascii_case("cbz")
-            && !ext.eq_ignore_ascii_case("cbt")
+            && !ext.eq_ignore_ascii_case("cbr")
         {
             println!("Input extension is not accepted.");
             return false;
@@ -265,7 +267,7 @@ fn create_archive(source_dir: &Path, output_file: &Path,to_flatten: bool, to_ren
 /// todo doc
 /// todo tests
 fn convert_to_avif(path: &Path, max_size : &u32) -> Result<(), Box<dyn std::error::Error>> {
-    let img = ImageReader::open(path)?.decode()?;
+    let img = ImageReader::open(path)?.with_guessed_format()?.decode()?;
     let resized = if *max_size!=0 && (img.width() > *max_size || img.height() > *max_size) {
         println!("Image too big : {}", path.display());
         img.thumbnail(*max_size, *max_size)
@@ -368,8 +370,80 @@ fn is_image(path: &Path) -> bool {
 /// Extracts an archive (param 1) to folder (param2)
 /// TODO tests
 fn extract_to_folder(path: &Path, tmp_dir: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+    let extension = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+
+    match extension.as_str() {
+        "cbz" => {
+            let data = fs::read(path)?;
+            let extractor = ArchiveExtractor::new();
+            let files = extractor.extract(&data, ArchiveFormat::Zip)?;
+
+            for file in files {
+                let output_path = tmp_dir.join(&file.path);
+                if file.is_directory {
+                    fs::create_dir_all(&output_path)?;
+                } else {
+                    if let Some(parent) = output_path.parent() {
+                        fs::create_dir_all(parent)?;
+                    }
+                    fs::write(&output_path, &file.data)?;
+                }
+            }
+        }
+        "cbr" => {
+            let file = File::open(path)?;
+            let mut archive = RarArchive::open(file)?;
+            let options = ExtractOptions::default();
+            for index in 0..archive.member_names().len() {
+                let member = archive
+                    .member_info(index)
+                    .ok_or("Invalid RAR member index")?;
+                let member_path = Path::new(&member.name);
+                let output_path = tmp_dir.join(member_path);
+                if member.is_directory {
+                    fs::create_dir_all(&output_path)?;
+                    continue;
+                }
+                if let Some(parent) = output_path.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                archive.extract_member_to_file(
+                    index,
+                    &options,
+                    None,
+                    &output_path,
+                )?;
+            }
+        }
+
+        _ => {
+            return Err(format!(
+                "Unsupported archive format: {}",
+                extension
+            ).into());
+        }
+    }
+    Ok(())
+
+/*
     let data = fs::read(path)?;
     let extractor = ArchiveExtractor::new();
+
+    let format = match path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("cbz") => ArchiveFormat::Zip,
+        Some("cbr") => ArchiveFormat::Rar,
+        _ => return Err("Unsupported archive format".into()),
+    };
+
     let files = extractor.extract(&data, ArchiveFormat::Zip)?;
 
     for file in files {
@@ -388,4 +462,6 @@ fn extract_to_folder(path: &Path, tmp_dir: &PathBuf) -> Result<(), Box<dyn std::
         }
     }
     Ok(())
+
+ */
 }
