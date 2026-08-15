@@ -4,7 +4,7 @@ use std::io::{Write};
 use std::path::{Path, PathBuf};
 use archive::{ArchiveExtractor, ArchiveFormat};
 use image::{ImageReader};
-use ravif::{Encoder, Img};
+use ravif::{BitDepth, Encoder, Img};
 use rgb::{RGB8};
 use tempfile::TempDir;
 use walkdir::WalkDir;
@@ -295,18 +295,12 @@ fn convert_to_avif(path: &Path, max_size : &u32) -> Result<(), Box<dyn std::erro
     );
 
     // The conversion differs only by quality : 20 for gray_scale, 30 for colors
-    let result;
-    if is_gray {
-        result = Encoder::new()
-            .with_quality(20.0)
-            .with_speed(3)
-            .encode_rgb(img)?;
-    } else {
-        result = Encoder::new()
-            .with_quality(30.0)
-            .with_speed(3)
-            .encode_rgb(img)?;
-    }
+    let quality = if is_gray { 20.0 } else { 30.0 };
+    let result = Encoder::new()
+        .with_quality(quality)
+        .with_speed(3)
+        .with_bit_depth(BitDepth::Eight)
+        .encode_rgb(img)?;
 
     let output = path.with_extension("avif");
     fs::write(&output, result.avif_file)?;
