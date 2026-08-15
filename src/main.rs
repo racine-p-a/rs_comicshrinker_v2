@@ -299,7 +299,7 @@ fn convert_to_avif(path: &Path, max_size : &u32) -> Result<(), Box<dyn std::erro
     let result = Encoder::new()
         .with_quality(quality)
         .with_speed(3)
-        .with_bit_depth(BitDepth::Eight)
+        .with_bit_depth(BitDepth::Eight) // Eight for better compatibility with reading apps. Better compression with Ten.
         .encode_rgb(img)?;
 
     let output = path.with_extension("avif");
