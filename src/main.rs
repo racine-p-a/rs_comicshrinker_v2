@@ -118,6 +118,7 @@ fn is_input_acceptable(path_to_input: &Path)-> bool {
     // Check : acceptable extension
     if let Some(ext) = path_to_input.extension().and_then(|e| e.to_str()) {
         if !ext.eq_ignore_ascii_case("cbz")
+            && !ext.eq_ignore_ascii_case("zip")
             && !ext.eq_ignore_ascii_case("cbr")
         {
             println!("Input extension is not accepted.");
@@ -371,7 +372,7 @@ fn extract_to_folder(path: &Path, tmp_dir: &PathBuf) -> Result<(), Box<dyn std::
         .to_ascii_lowercase();
 
     match extension.as_str() {
-        "cbz" => {
+        "cbz"|"zip" => {
             let data = fs::read(path)?;
             let extractor = ArchiveExtractor::new();
             let files = extractor.extract(&data, ArchiveFormat::Zip)?;
