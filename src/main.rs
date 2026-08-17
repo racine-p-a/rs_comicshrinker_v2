@@ -46,7 +46,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Input acceptable ?
     if !is_input_acceptable(&args.path_to_archive) {
-        panic!("Selected output is not acceptable.");
+        panic!("Selected input is not acceptable.");
     }
 
     // Output acceptable ?
