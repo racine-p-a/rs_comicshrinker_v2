@@ -76,7 +76,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Image conversion
     println!("All images will be resized to maximum dimensions of : {} pixels (size ratio will be kept). Use the option \"--max-size=1920\" if you want another maximum.", args.max_size);
     println!("Use the option \"--max-size=1920\" if you want another maximum.");
-    println!("Use the option \"--max-size=0\" if you want deactivate this behavior.");
+    println!("Use the option \"--max-size=0\" if you want deactivate this behavior (recommended for webtoons).");
     convert_directory(&tmp_dir.path(), &args.max_size)?;
 
     let output = PathBuf::from(&args.path_to_output);
@@ -270,14 +270,13 @@ fn create_archive(source_dir: &Path, output_file: &Path,to_flatten: bool, to_ren
 fn convert_to_avif(path: &Path, max_size : &u32) -> Result<(), Box<dyn std::error::Error>> {
     let img = ImageReader::open(path)?.with_guessed_format()?.decode()?;
     let resized = if *max_size!=0 && (img.width() > *max_size || img.height() > *max_size) {
-        println!("Image too big : {}", path.display());
+        println!("This image is too big, it will be resized : {}", path.display());
         img.thumbnail(*max_size, *max_size)
     } else {
         img
     };
     let rgb = resized.to_rgb8();
     let is_gray = is_grayscale(&rgb);
-    println!("is_gray = {}", is_gray);
     if is_gray {
         println!("{} : grayscale", path.display());
     } else {
@@ -299,7 +298,7 @@ fn convert_to_avif(path: &Path, max_size : &u32) -> Result<(), Box<dyn std::erro
     let quality = if is_gray { 20.0 } else { 30.0 };
     let result = Encoder::new()
         .with_quality(quality)
-        .with_speed(3)
+        .with_speed(1)
         .with_bit_depth(BitDepth::Eight) // Eight for better compatibility with reading apps. Better compression with Ten.
         .encode_rgb(img)?;
 
