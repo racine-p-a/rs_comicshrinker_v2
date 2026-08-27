@@ -1,9 +1,10 @@
 use clap::Parser;
 use std::fs::{self, File};
-use std::io::{Write};
+use std::io::{BufReader, Write};
 use std::path::{Path, PathBuf};
 use archive::{ArchiveExtractor, ArchiveFormat};
-use image::{ImageReader};
+use image::{DynamicImage, ImageReader, RgbImage, RgbaImage};
+use png::{ColorType, Decoder, Transformations};
 use ravif::{BitDepth, Encoder, Img};
 use rgb::{RGB8};
 use tempfile::TempDir;
@@ -268,14 +269,65 @@ fn create_archive(source_dir: &Path, output_file: &Path,to_flatten: bool, to_ren
 /// todo doc
 /// todo tests
 fn convert_to_avif(path: &Path, max_size : &u32) -> Result<(), Box<dyn std::error::Error>> {
-    let img = ImageReader::open(path)?.with_guessed_format()?.decode()?;
-    let resized = if *max_size!=0 && (img.width() > *max_size || img.height() > *max_size) {
-        println!("This image is too big, it will be resized : {}", path.display());
-        img.thumbnail(*max_size, *max_size)
-    } else {
-        img
+    let reader = ImageReader::open(path)?.with_guessed_format()?;
+    let format = reader.format();
+
+    let img = match reader.decode() {
+        Ok(img) => img,
+
+        Err(original_error) => {
+            // Sometimes, PNG files have incoherent checksums. Conversion can still be possible.
+            if format == Some(image::ImageFormat::Png) {
+                eprintln!(
+                    "Normal PNG decoding failed for {}: {}",
+                    path.display(),
+                    original_error
+                );
+                eprintln!(
+                    "Retrying {} while ignoring PNG checksums...",
+                    path.display()
+                );
+                match decode_png_ignore_crc(path) {
+                    Ok(img) => {
+                        println!(
+                            "PNG successfully recovered despite invalid checksum: {}",
+                            path.display()
+                        );
+                        img
+                    }
+                    Err(recovery_error) => {
+                        return Err(format!(
+                            "Unable to decode {}.\n\
+                             Normal decoder: {}\n\
+                             PNG recovery decoder: {}",
+                            path.display(),
+                            original_error,
+                            recovery_error
+                        )
+                            .into());
+                    }
+                }
+            } else {
+                return Err(original_error.into());
+            }
+        }
     };
+
+    let resized =
+        if *max_size != 0
+            && (img.width() > *max_size || img.height() > *max_size)
+        {
+            println!(
+                "This image is too big, it will be resized : {}",
+                path.display()
+            );
+
+            img.thumbnail(*max_size, *max_size)
+        } else {
+            img
+        };
     let rgb = resized.to_rgb8();
+
     let is_gray = is_grayscale(&rgb);
     if is_gray {
         println!("{} : grayscale", path.display());
@@ -309,6 +361,81 @@ fn convert_to_avif(path: &Path, max_size : &u32) -> Result<(), Box<dyn std::erro
     }
 
     Ok(())
+}
+
+fn decode_png_ignore_crc(
+    path: &Path,
+) -> Result<DynamicImage, Box<dyn std::error::Error>> {
+    let file = File::open(path)?;
+    let reader = BufReader::new(file);
+
+    let mut decoder = Decoder::new(reader);
+
+    // Ignore invalid PNG CRC / Adler-32 checksums.
+    decoder.ignore_checksums(true);
+
+    // Convert palette/grayscale variants to conventional 8-bit output.
+    decoder.set_transformations(
+        Transformations::EXPAND | Transformations::STRIP_16,
+    );
+
+    let mut reader = decoder.read_info()?;
+
+    let mut buf = vec![0; reader.output_buffer_size().unwrap()];
+    let info = reader.next_frame(&mut buf)?;
+    let bytes = &buf[..info.buffer_size()];
+
+    let image = match info.color_type {
+        ColorType::Rgb => {
+            let img = RgbImage::from_raw(
+                info.width,
+                info.height,
+                bytes.to_vec(),
+            )
+                .ok_or("Invalid RGB PNG buffer")?;
+
+            DynamicImage::ImageRgb8(img)
+        }
+
+        ColorType::Rgba => {
+            let img = RgbaImage::from_raw(
+                info.width,
+                info.height,
+                bytes.to_vec(),
+            )
+                .ok_or("Invalid RGBA PNG buffer")?;
+
+            DynamicImage::ImageRgba8(img)
+        }
+
+        ColorType::Grayscale => {
+            let img = image::GrayImage::from_raw(
+                info.width,
+                info.height,
+                bytes.to_vec(),
+            )
+                .ok_or("Invalid grayscale PNG buffer")?;
+
+            DynamicImage::ImageLuma8(img)
+        }
+
+        ColorType::GrayscaleAlpha => {
+            let img = image::GrayAlphaImage::from_raw(
+                info.width,
+                info.height,
+                bytes.to_vec(),
+            )
+                .ok_or("Invalid grayscale-alpha PNG buffer")?;
+
+            DynamicImage::ImageLumaA8(img)
+        }
+
+        ColorType::Indexed => {
+            return Err("Unexpected indexed PNG after EXPAND".into());
+        }
+    };
+
+    Ok(image)
 }
 
 /// todo doc
