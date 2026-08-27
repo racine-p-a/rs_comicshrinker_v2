@@ -363,6 +363,8 @@ fn convert_to_avif(path: &Path, max_size : &u32) -> Result<(), Box<dyn std::erro
     Ok(())
 }
 
+/// todo doc
+/// todo tests
 fn decode_png_ignore_crc(
     path: &Path,
 ) -> Result<DynamicImage, Box<dyn std::error::Error>> {
