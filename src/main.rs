@@ -365,12 +365,10 @@ fn convert_to_avif(path: &Path, max_size : &u32) -> Result<(), Box<dyn std::erro
 
 /// todo doc
 /// todo tests
-fn decode_png_ignore_crc(
-    path: &Path,
-) -> Result<DynamicImage, Box<dyn std::error::Error>> {
+/// todo made with chatgpt, must verify if all ok
+fn decode_png_ignore_crc(path: &Path,) -> Result<DynamicImage, Box<dyn std::error::Error>> {
     let file = File::open(path)?;
     let reader = BufReader::new(file);
-
     let mut decoder = Decoder::new(reader);
 
     // Ignore invalid PNG CRC / Adler-32 checksums.
@@ -382,7 +380,6 @@ fn decode_png_ignore_crc(
     );
 
     let mut reader = decoder.read_info()?;
-
     let mut buf = vec![0; reader.output_buffer_size().unwrap()];
     let info = reader.next_frame(&mut buf)?;
     let bytes = &buf[..info.buffer_size()];
@@ -436,7 +433,6 @@ fn decode_png_ignore_crc(
             return Err("Unexpected indexed PNG after EXPAND".into());
         }
     };
-
     Ok(image)
 }
 
