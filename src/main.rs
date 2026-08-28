@@ -1,8 +1,8 @@
 use clap::Parser;
 use std::fs::{self, File};
+use std::io;
 use std::io::{BufReader, Write};
 use std::path::{Path, PathBuf};
-use archive::{ArchiveExtractor, ArchiveFormat};
 use image::{DynamicImage, ImageReader, RgbImage, RgbaImage};
 use png::{ColorType, Decoder, Transformations};
 use ravif::{BitDepth, Encoder, Img};
@@ -10,8 +10,7 @@ use rgb::{RGB8};
 use tempfile::TempDir;
 use walkdir::WalkDir;
 use weaver_unrar::{ExtractOptions, RarArchive};
-use zip::write::SimpleFileOptions;
-use zip::ZipWriter;
+use zip::{write::SimpleFileOptions, ZipArchive, ZipWriter};
 
 // todo documenter que nasm est nécessaire à la compilation
 // todo conserver les métadonnées d'origine ;
@@ -497,23 +496,35 @@ fn extract_to_folder(path: &Path, tmp_dir: &PathBuf) -> Result<(), Box<dyn std::
 
     match extension.as_str() {
         "cbz"|"zip" => {
-            let data = fs::read(path)?;
-            let extractor = ArchiveExtractor::new();
-            let files = extractor.extract(&data, ArchiveFormat::Zip)?;
+            let file = File::open(path)?;
+            let mut archive = ZipArchive::new(file)?;
+            for index in 0..archive.len() {
+                let mut file = archive.by_index(index)?;
 
-            for file in files {
-                let output_path = tmp_dir.join(&file.path);
-                if file.is_directory {
+                // Prevent paths such as ../../somewhere/file
+                let Some(relative_path) = file.enclosed_name() else {
+                    eprintln!(
+                        "Unsafe path ignored in ZIP archive: {}",
+                        file.name()
+                    );
+                    continue;
+                };
+
+                let output_path = tmp_dir.join(relative_path);
+                if file.is_dir() {
                     fs::create_dir_all(&output_path)?;
                 } else {
                     if let Some(parent) = output_path.parent() {
                         fs::create_dir_all(parent)?;
                     }
-                    fs::write(&output_path, &file.data)?;
+                    let mut output_file = File::create(&output_path)?;
+
+                    // Stream directly from the archive to the file.
+                    io::copy(&mut file, &mut output_file)?;
                 }
             }
         }
-        "cbr" => {
+        "cbr"|"rar" => {
             let file = File::open(path)?;
             let mut archive = RarArchive::open(file)?;
             let options = ExtractOptions::default();
@@ -547,40 +558,4 @@ fn extract_to_folder(path: &Path, tmp_dir: &PathBuf) -> Result<(), Box<dyn std::
         }
     }
     Ok(())
-
-/*
-    let data = fs::read(path)?;
-    let extractor = ArchiveExtractor::new();
-
-    let format = match path
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|e| e.to_ascii_lowercase())
-        .as_deref()
-    {
-        Some("cbz") => ArchiveFormat::Zip,
-        Some("cbr") => ArchiveFormat::Rar,
-        _ => return Err("Unsupported archive format".into()),
-    };
-
-    let files = extractor.extract(&data, ArchiveFormat::Zip)?;
-
-    for file in files {
-        let output_path = tmp_dir.join(&file.path);
-
-        if file.is_directory {
-            fs::create_dir_all(&output_path)?;
-        } else {
-            // Creates parent directory if not already created.
-            if let Some(parent) = output_path.parent() {
-                fs::create_dir_all(parent)?;
-            }
-            fs::write(&output_path, &file.data)?;
-
-            //println!("File: {} ({} bytes)", output_path.display(), file.path);
-        }
-    }
-    Ok(())
-
- */
 }
